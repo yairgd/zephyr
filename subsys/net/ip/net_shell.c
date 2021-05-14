@@ -2159,7 +2159,7 @@ static void print_dns_info(const struct shell *shell,
 	for (i = 0; i < CONFIG_DNS_NUM_CONCUR_QUERIES; i++) {
 		int32_t remaining;
 
-		if (!ctx->queries[i].cb) {
+		if (!ctx->queries[i].cb || !ctx->queries[i].query) {
 			continue;
 		}
 
@@ -5529,8 +5529,8 @@ static int cmd_net_suspend(const struct shell *shell, size_t argc,
 
 		dev = net_if_get_device(iface);
 
-		ret = device_set_power_state(dev, DEVICE_PM_SUSPEND_STATE,
-					     NULL, NULL);
+		ret = pm_device_state_set(dev, PM_DEVICE_STATE_SUSPEND,
+					  NULL, NULL);
 		if (ret != 0) {
 			PR_INFO("Iface could not be suspended: ");
 
@@ -5574,8 +5574,8 @@ static int cmd_net_resume(const struct shell *shell, size_t argc,
 
 		dev = net_if_get_device(iface);
 
-		ret = device_set_power_state(dev, DEVICE_PM_ACTIVE_STATE,
-					     NULL, NULL);
+		ret = pm_device_state_set(dev, PM_DEVICE_STATE_ACTIVE,
+					  NULL, NULL);
 		if (ret != 0) {
 			PR_INFO("Iface could not be resumed\n");
 		}

@@ -40,6 +40,10 @@ void radio_df_ant_switch_pattern_clear(void);
  * by call to @ref radio_df_ant_switch_pattern_clear.
  */
 void radio_df_ant_switch_pattern_set(uint8_t *patterns, uint8_t len);
+/* Provides switch pattern of antenna used to transmit PDU that is used to
+ * transmit CTE
+ */
+uint8_t radio_df_pdu_antenna_switch_pattern_get(void);
 /* Resets Direction Finding radio configuration */
 void radio_df_reset(void);
 
@@ -54,3 +58,5 @@ void radio_df_cte_inline_set_enabled(bool cte_info_in_s1);
 void radio_df_iq_data_packet_set(uint8_t *buffer, size_t len);
 /* Get number of stored IQ samples during CTE receive */
 uint32_t radio_df_iq_samples_amount_get(void);
+/* Get CTE status (CTEInfo) parsed by Radio from received PDU */
+uint8_t radio_df_cte_status_get(void);

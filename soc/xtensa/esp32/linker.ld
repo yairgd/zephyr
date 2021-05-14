@@ -45,6 +45,9 @@ MEMORY
   drom0_0_seg(R): org = 0x3F400020, len = 0x400000-0x20
   rtc_iram_seg(RWX): org = 0x400C0000, len = 0x2000
   rtc_slow_seg(RW): org = 0x50000000, len = 0x1000
+#if defined(CONFIG_ESP_SPIRAM)
+  ext_ram_seg(RW): org = 0x3F800000, len = CONFIG_ESP_SPIRAM_SIZE
+#endif
 #ifdef CONFIG_GEN_ISR_TABLES
   IDT_LIST(RW): org = 0x3ebfe010, len = 0x2000
 #endif
@@ -250,44 +253,18 @@ _net_buf_pool_list = _esp_net_buf_pool_list;
     . = ALIGN(4);
   } GROUP_LINK_IN(RAMABLE_REGION)
 
+#if defined(CONFIG_ESP_SPIRAM)
+  .ext_ram.bss (NOLOAD):
+  {
+    _ext_ram_data_start = ABSOLUTE(.);
+    *(.ext_ram.bss*)
+    _ext_ram_data_end = ABSOLUTE(.) + CONFIG_ESP_SPIRAM_SIZE;
+  } > ext_ram_seg
+#endif
+
  SECTION_PROLOGUE(_RODATA_SECTION_NAME,,ALIGN(20))
   {
     _rodata_start = ABSOLUTE(.);
-#if defined(CONFIG_NET_SOCKETS)
-    . = ALIGN(4);
-    Z_LINK_ITERABLE(net_socket_register);
-    . = ALIGN(4);
-#endif
-
-#if defined(CONFIG_SETTINGS)
-    . = ALIGN(4);
-    Z_LINK_ITERABLE(settings_handler_static);
-    . = ALIGN(4);
-#endif
-
-#if defined(CONFIG_BT_BREDR)
-    . = ALIGN(4);
-    Z_LINK_ITERABLE(bt_l2cap_br_fixed_chan);
-    . = ALIGN(4);
-#endif
-
-#if defined(CONFIG_BT_MESH)
-    Z_LINK_ITERABLE(bt_mesh_subnet_cb);
-    Z_LINK_ITERABLE(bt_mesh_app_key_cb);
-    Z_LINK_ITERABLE(bt_mesh_hb_cb);
-#endif
-
-    . = ALIGN(4);
-    Z_LINK_ITERABLE(bt_gatt_service_static);
-    . = ALIGN(4);
-
-    . = ALIGN(4);
-    Z_LINK_ITERABLE(bt_l2cap_fixed_chan);
-    . = ALIGN(4);
-
-    . = ALIGN(4);
-    Z_LINK_ITERABLE(shell);
-    . = ALIGN(4);
 
     __esp_shell_root_cmds_start = .;
     KEEP(*(SORT(.shell_root_cmd_*)));
@@ -325,10 +302,7 @@ _net_buf_pool_list = _esp_net_buf_pool_list;
     _rodata_end = ABSOLUTE(.);
   } GROUP_LINK_IN(ROMABLE_REGION)
 
-#pragma push_macro("Z_ITERABLE_SECTION_ROM")
 #pragma push_macro("ROMABLE_REGION")
-#undef Z_ITERABLE_SECTION_ROM
-#define Z_ITERABLE_SECTION_ROM(x,y)
 #undef ROMABLE_REGION
 /* This is to workaround limitation of `esptool` which needs single `FLASH` data segment
  * which is already defined above. In case, `common-rom.ld` creates additional segments
@@ -343,7 +317,6 @@ __log_backends_end = __esp_log_backends_end;
 __shell_root_cmds_start = __esp_shell_root_cmds_start;
 __shell_root_cmds_end = __esp_shell_root_cmds_end;
 #pragma pop_macro("ROMABLE_REGION")
-#pragma pop_macro("Z_ITERABLE_SECTION_ROM")
 
   SECTION_PROLOGUE(_TEXT_SECTION_NAME, , ALIGN(4))
   {
@@ -456,7 +429,6 @@ __shell_root_cmds_end = __esp_shell_root_cmds_end;
     *(.noinit)
     *(".noinit.*")
     . = ALIGN (8);
-    _heap_start = ABSOLUTE(.);
   } GROUP_LINK_IN(RAMABLE_REGION_1)
 
 #ifdef CONFIG_GEN_ISR_TABLES

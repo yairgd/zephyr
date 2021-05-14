@@ -152,12 +152,13 @@ ARM64 arch:
     collaborators:
         - npitre
         - ioannisg
+        - povergoing
     files:
         - arch/arm64/
         - include/arch/arm64/
         - tests/arch/arm64/
-        - soc/arm64/qemu_cortex_a53/
-        - boards/arm64/qemu_cortex_a53/
+        - soc/arm64/
+        - boards/arm64/
         - dts/arm64/
     labels:
         - "area: ARM64"
@@ -1011,7 +1012,7 @@ MCU Manager:
 OSDP:
     status: orphaned
     collaborators:
-        - cbsiddharth
+        - sidcha
     files:
         - subsys/mgmt/osdp/
         - include/mgmt/osdp.h
@@ -1166,10 +1167,10 @@ Power management:
         - nashif
         - mengxianglinx
     files:
-        - include/power/power.h
-        - samples/subsys/power/
-        - subsys/power/
-        - tests/subsys/power/
+        - include/pm/pm.h
+        - samples/subsys/pm/
+        - subsys/pm/
+        - tests/subsys/pm/
     labels:
         - "area: Power Management"
 
@@ -1506,6 +1507,7 @@ West:
         - mbolivar-nordic
     collaborators:
         - carlescufi
+        - swinslow
     files:
         - scripts/west-commands.yml
         - scripts/west_commands/

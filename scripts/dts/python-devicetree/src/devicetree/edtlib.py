@@ -2,7 +2,7 @@
 # Copyright (c) 2019 Linaro Limited
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Tip: You can view just the documentation with 'pydoc3 edtlib'
+# Tip: You can view just the documentation with 'pydoc3 devicetree.edtlib'
 
 """
 Library for working with devicetrees at a higher level compared to dtlib. Like
@@ -25,7 +25,7 @@ See their constructor docstrings for details. There is also a
 bindings_from_paths() helper function.
 """
 
-# NOTE: testedtlib.py is the test suite for this library.
+# NOTE: tests/test_edtlib.py is the test suite for this library.
 
 # Implementation notes
 # --------------------
@@ -79,7 +79,7 @@ try:
     # This makes e.g. gen_defines.py more than twice as fast.
     from yaml import CLoader as Loader
 except ImportError:
-    from yaml import Loader
+    from yaml import Loader     # type: ignore
 
 from devicetree.dtlib import DT, DTError, to_num, to_nums, Type
 from devicetree.grutils import Graph

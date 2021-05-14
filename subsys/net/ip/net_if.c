@@ -316,12 +316,9 @@ static bool net_if_tx(struct net_if *iface, struct net_pkt *pkt)
 	return true;
 }
 
-static void process_tx_packet(struct k_work *work)
+void net_process_tx_packet(struct net_pkt *pkt)
 {
 	struct net_if *iface;
-	struct net_pkt *pkt;
-
-	pkt = CONTAINER_OF(work, struct net_pkt, work);
 
 	net_pkt_set_tx_stats_tick(pkt, k_cycle_get_32());
 
@@ -354,8 +351,6 @@ void net_if_queue_tx(struct net_if *iface, struct net_pkt *pkt)
 		net_if_tx(net_pkt_iface(pkt), pkt);
 		return;
 	}
-
-	k_work_init(net_pkt_work(pkt), process_tx_packet);
 
 #if NET_TC_TX_COUNT > 1
 	NET_DBG("TC %d with prio %d pkt %p", tc, prio, pkt);
@@ -3191,7 +3186,7 @@ const struct in_addr *net_if_ipv4_select_src_addr(struct net_if *dst_iface,
 
 	k_mutex_lock(&lock, K_FOREVER);
 
-	if (!net_ipv4_is_ll_addr(dst) && !net_ipv4_is_addr_mcast(dst)) {
+	if (!net_ipv4_is_ll_addr(dst)) {
 
 		/* If caller has supplied interface, then use that */
 		if (dst_iface) {

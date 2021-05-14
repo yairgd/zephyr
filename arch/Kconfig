@@ -919,6 +919,23 @@ config ICACHE_LINE_SIZE
 
 	  Detect automatically at runtime by selecting ICACHE_LINE_SIZE_DETECT.
 
+choice
+	prompt "Cache type"
+	depends on CACHE_MANAGEMENT
+	default HAS_ARCH_CACHE
+
+config HAS_ARCH_CACHE
+	bool "Integrated cache controller"
+	help
+	  "Integrade on-core cache controller"
+
+config HAS_EXTERNAL_CACHE
+	bool "External cache controller"
+	help
+	  "External cache controller or cache management system"
+
+endchoice
+
 endmenu
 
 config ARCH
@@ -955,3 +972,9 @@ config BOARD
 	  The Board is the first location where we search for a linker.ld file,
 	  if not found we look for the linker file in
 	  soc/<arch>/<family>/<series>
+
+config TOOLCHAIN_HAS_BUILTIN_FFS
+	bool
+	default y if !(64BIT && RISCV)
+	help
+	  Hidden option to signal that toolchain has __builtin_ffs*().

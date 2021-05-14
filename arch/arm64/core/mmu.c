@@ -764,7 +764,7 @@ static void enable_mmu_el1(struct arm_mmu_ptables *ptables, unsigned int flags)
 	isb();
 
 	/* Invalidate all data caches before enable them */
-	sys_dcache_all(K_CACHE_INVD);
+	sys_cache_data_all(K_CACHE_INVD);
 
 	/* Enable the MMU and data cache */
 	val = read_sctlr_el1();
@@ -906,6 +906,27 @@ void arch_mem_unmap(void *addr, size_t size)
 		sync_domains((uintptr_t)addr, size);
 		invalidate_tlb_all();
 	}
+}
+
+int arch_page_phys_get(void *virt, uintptr_t *phys)
+{
+	uint64_t par;
+	int key;
+
+	key = arch_irq_lock();
+	__asm__ volatile ("at S1E1R, %0" : : "r" (virt));
+	isb();
+	par = read_sysreg(PAR_EL1);
+	arch_irq_unlock(key);
+
+	if (par & BIT(0)) {
+		return -EFAULT;
+	}
+
+	if (phys) {
+		*phys = par & GENMASK(47, 12);
+	}
+	return 0;
 }
 
 #ifdef CONFIG_USERSPACE

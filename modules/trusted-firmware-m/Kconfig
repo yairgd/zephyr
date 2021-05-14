@@ -17,6 +17,7 @@ config TFM_BOARD
 	default "stm/stm32l562e_dk" if BOARD_STM32L562E_DK
 	default "musca_b1/sse_200" if BOARD_MUSCA_B1
 	default "musca_s1" if BOARD_MUSCA_S1
+	default "lairdconnectivity/bl5340_dvk_cpuapp" if BOARD_BL5340_DVK_CPUAPPNS
 	help
 	  The board name used for building TFM. Building with TFM requires that
 	  TFM has been ported to the given board/SoC.
@@ -28,6 +29,7 @@ menuconfig BUILD_WITH_TFM
 	depends on ARM_TRUSTZONE_M
 	select BUILD_OUTPUT_HEX
 	imply INIT_ARCH_HW_AT_BOOT
+	imply ARM_NONSECURE_PREEMPTIBLE_SECURE_CALLS
 	help
 	  When enabled, this option instructs the Zephyr build process to
 	  additionaly generate a TF-M image for the Secure Execution
@@ -38,10 +40,13 @@ menuconfig BUILD_WITH_TFM
 	  TF-M and Zephyr images, as well as the veneer object file that links
 	  them, are generated during the normal Zephyr build process.
 
-	  Note:
+	  Notes:
 	    Building with the "_nonsecure" BOARD variant (e.g.
 	    "mps2_an521_nonsecure") ensures that
 	    CONFIG_TRUSTED_EXECUTION_NONSECURE ie enabled.
+
+	    By default we allow Zephyr preemptible threads be preempted
+	    while performing a secure function call.
 
 if BUILD_WITH_TFM
 

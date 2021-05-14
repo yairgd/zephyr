@@ -396,15 +396,18 @@ struct net_if_config {
  *
  * Traffic classes are used when sending or receiving data that is classified
  * with different priorities. So some traffic can be marked as high priority
- * and it will be sent or received first. There is always at least one work
- * queue in the system for Rx and Tx. Each network packet that is transmitted
- * or received goes through a work queue thread that will transmit it.
+ * and it will be sent or received first. Each network packet that is
+ * transmitted or received goes through a fifo to a thread that will transmit
+ * it.
  */
 struct net_traffic_class {
-	/** Work queue for handling this Tx or Rx packet */
-	struct k_work_q work_q;
+	/** Fifo for handling this Tx or Rx packet */
+	struct k_fifo fifo;
 
-	/** Stack for this work queue */
+	/** Traffic class handler thread */
+	struct k_thread handler;
+
+	/** Stack for this handler */
 	k_thread_stack_t *stack;
 };
 
@@ -2262,7 +2265,7 @@ struct net_if_api {
  * @param drv_name The name this instance of the driver exposes to
  * the system.
  * @param init_fn Address to the init function of the driver.
- * @param pm_control_fn Pointer to device_pm_control function.
+ * @param pm_control_fn Pointer to pm_control function.
  * Can be NULL if not implemented.
  * @param data Pointer to the device's private data.
  * @param cfg The address to the structure containing the
@@ -2289,7 +2292,7 @@ struct net_if_api {
  *
  * @param node_id The devicetree node identifier.
  * @param init_fn Address to the init function of the driver.
- * @param pm_control_fn Pointer to device_pm_control function.
+ * @param pm_control_fn Pointer to pm_control function.
  * Can be NULL if not implemented.
  * @param data Pointer to the device's private data.
  * @param cfg The address to the structure containing the
@@ -2344,7 +2347,7 @@ struct net_if_api {
  * the system.
  * @param instance Instance identifier.
  * @param init_fn Address to the init function of the driver.
- * @param pm_control_fn Pointer to device_pm_control function.
+ * @param pm_control_fn Pointer to pm_control function.
  * Can be NULL if not implemented.
  * @param data Pointer to the device's private data.
  * @param cfg The address to the structure containing the
@@ -2376,7 +2379,7 @@ struct net_if_api {
  * @param node_id The devicetree node identifier.
  * @param instance Instance identifier.
  * @param init_fn Address to the init function of the driver.
- * @param pm_control_fn Pointer to device_pm_control function.
+ * @param pm_control_fn Pointer to pm_control function.
  * Can be NULL if not implemented.
  * @param data Pointer to the device's private data.
  * @param cfg The address to the structure containing the
@@ -2428,7 +2431,7 @@ struct net_if_api {
  * @param drv_name The name this instance of the driver exposes to
  * the system.
  * @param init_fn Address to the init function of the driver.
- * @param pm_control_fn Pointer to device_pm_control function.
+ * @param pm_control_fn Pointer to pm_control function.
  * Can be NULL if not implemented.
  * @param data Pointer to the device's private data.
  * @param cfg The address to the structure containing the
@@ -2454,7 +2457,7 @@ struct net_if_api {
  *
  * @param node_id The devicetree node identifier.
  * @param init_fn Address to the init function of the driver.
- * @param pm_control_fn Pointer to device_pm_control function.
+ * @param pm_control_fn Pointer to pm_control function.
  * Can be NULL if not implemented.
  * @param data Pointer to the device's private data.
  * @param cfg The address to the structure containing the

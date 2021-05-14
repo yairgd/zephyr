@@ -19,6 +19,7 @@
 #include <limits.h>
 #include <stdbool.h>
 #include <toolchain.h>
+#include <tracing/tracing_macros.h>
 
 #ifdef CONFIG_THREAD_RUNTIME_STATS_USE_TIMING_FUNCTIONS
 #include <timing/timing.h>
@@ -74,18 +75,6 @@ extern "C" {
 
 #define K_HIGHEST_APPLICATION_THREAD_PRIO (K_HIGHEST_THREAD_PRIO)
 #define K_LOWEST_APPLICATION_THREAD_PRIO (K_LOWEST_THREAD_PRIO - 1)
-
-#ifdef CONFIG_OBJECT_TRACING
-#define _OBJECT_TRACING_NEXT_PTR(type) struct type *__next;
-#define _OBJECT_TRACING_LINKED_FLAG uint8_t __linked;
-#define _OBJECT_TRACING_INIT \
-	.__next = NULL,	     \
-	.__linked = 0,
-#else
-#define _OBJECT_TRACING_INIT
-#define _OBJECT_TRACING_NEXT_PTR(type)
-#define _OBJECT_TRACING_LINKED_FLAG
-#endif
 
 #ifdef CONFIG_POLL
 #define _POLL_EVENT_OBJ_INIT(obj) \
@@ -1295,8 +1284,6 @@ struct k_timer {
 	/* user-specific data, also used to support legacy features */
 	void *user_data;
 
-	_OBJECT_TRACING_NEXT_PTR(k_timer)
-	_OBJECT_TRACING_LINKED_FLAG
 };
 
 #define Z_TIMER_INITIALIZER(obj, expiry, stop) \
@@ -1311,7 +1298,6 @@ struct k_timer {
 	.stop_fn = stop, \
 	.status = 0, \
 	.user_data = 0, \
-	_OBJECT_TRACING_INIT \
 	}
 
 /**
@@ -1658,8 +1644,6 @@ struct k_queue {
 	_wait_q_t wait_q;
 
 	_POLL_EVENT;
-	_OBJECT_TRACING_NEXT_PTR(k_queue)
-	_OBJECT_TRACING_LINKED_FLAG
 };
 
 #define Z_QUEUE_INITIALIZER(obj) \
@@ -1668,7 +1652,6 @@ struct k_queue {
 	.lock = { }, \
 	.wait_q = Z_WAIT_Q_INIT(&obj.wait_q),	\
 	_POLL_EVENT_OBJ_INIT(obj)		\
-	_OBJECT_TRACING_INIT \
 	}
 
 extern void *z_queue_node_peek(sys_sfnode_t *node, bool needs_free);
@@ -1869,10 +1852,7 @@ __syscall void *k_queue_get(struct k_queue *queue, k_timeout_t timeout);
  *
  * @return true if data item was removed
  */
-static inline bool k_queue_remove(struct k_queue *queue, void *data)
-{
-	return sys_sflist_find_and_remove(&queue->data_q, (sys_sfnode_t *)data);
-}
+bool k_queue_remove(struct k_queue *queue, void *data);
 
 /**
  * @brief Append an element to a queue only if it's not present already.
@@ -1888,19 +1868,7 @@ static inline bool k_queue_remove(struct k_queue *queue, void *data)
  *
  * @return true if data item was added, false if not
  */
-static inline bool k_queue_unique_append(struct k_queue *queue, void *data)
-{
-	sys_sfnode_t *test;
-
-	SYS_SFLIST_FOR_EACH_NODE(&queue->data_q, test) {
-		if (test == (sys_sfnode_t *) data) {
-			return false;
-		}
-	}
-
-	k_queue_append(queue, data);
-	return true;
-}
+bool k_queue_unique_append(struct k_queue *queue, void *data);
 
 /**
  * @brief Query a queue to see if it has data available.
@@ -1933,11 +1901,6 @@ static inline int z_impl_k_queue_is_empty(struct k_queue *queue)
  */
 __syscall void *k_queue_peek_head(struct k_queue *queue);
 
-static inline void *z_impl_k_queue_peek_head(struct k_queue *queue)
-{
-	return z_queue_node_peek(sys_sflist_peek_head(&queue->data_q), false);
-}
-
 /**
  * @brief Peek element at the tail of queue.
  *
@@ -1948,11 +1911,6 @@ static inline void *z_impl_k_queue_peek_head(struct k_queue *queue)
  * @return Tail element, or NULL if queue is empty.
  */
 __syscall void *k_queue_peek_tail(struct k_queue *queue);
-
-static inline void *z_impl_k_queue_peek_tail(struct k_queue *queue)
-{
-	return z_queue_node_peek(sys_sflist_peek_tail(&queue->data_q), false);
-}
 
 /**
  * @brief Statically define and initialize a queue.
@@ -2079,7 +2037,11 @@ struct k_fifo {
  * @return N/A
  */
 #define k_fifo_init(fifo) \
-	k_queue_init(&(fifo)->_queue)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_fifo, init, fifo); \
+	k_queue_init(&(fifo)->_queue); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_fifo, init, fifo); \
+	})
 
 /**
  * @brief Cancel waiting on a FIFO queue.
@@ -2095,7 +2057,11 @@ struct k_fifo {
  * @return N/A
  */
 #define k_fifo_cancel_wait(fifo) \
-	k_queue_cancel_wait(&(fifo)->_queue)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_fifo, cancel_wait, fifo); \
+	k_queue_cancel_wait(&(fifo)->_queue); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_fifo, cancel_wait, fifo); \
+	})
 
 /**
  * @brief Add an element to a FIFO queue.
@@ -2112,7 +2078,11 @@ struct k_fifo {
  * @return N/A
  */
 #define k_fifo_put(fifo, data) \
-	k_queue_append(&(fifo)->_queue, data)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_fifo, put, fifo, data); \
+	k_queue_append(&(fifo)->_queue, data); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_fifo, put, fifo, data); \
+	})
 
 /**
  * @brief Add an element to a FIFO queue.
@@ -2131,7 +2101,12 @@ struct k_fifo {
  * @retval -ENOMEM if there isn't sufficient RAM in the caller's resource pool
  */
 #define k_fifo_alloc_put(fifo, data) \
-	k_queue_alloc_append(&(fifo)->_queue, data)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_fifo, alloc_put, fifo, data); \
+	int ret = k_queue_alloc_append(&(fifo)->_queue, data); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_fifo, alloc_put, fifo, data, ret); \
+	ret; \
+	})
 
 /**
  * @brief Atomically add a list of elements to a FIFO.
@@ -2150,7 +2125,11 @@ struct k_fifo {
  * @return N/A
  */
 #define k_fifo_put_list(fifo, head, tail) \
-	k_queue_append_list(&(fifo)->_queue, head, tail)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_fifo, put_list, fifo, head, tail); \
+	k_queue_append_list(&(fifo)->_queue, head, tail); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_fifo, put_list, fifo, head, tail); \
+	})
 
 /**
  * @brief Atomically add a list of elements to a FIFO queue.
@@ -2168,7 +2147,11 @@ struct k_fifo {
  * @return N/A
  */
 #define k_fifo_put_slist(fifo, list) \
-	k_queue_merge_slist(&(fifo)->_queue, list)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_fifo, put_slist, fifo, list); \
+	k_queue_merge_slist(&(fifo)->_queue, list); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_fifo, put_slist, fifo, list); \
+	})
 
 /**
  * @brief Get an element from a FIFO queue.
@@ -2188,7 +2171,12 @@ struct k_fifo {
  * without waiting, or waiting period timed out.
  */
 #define k_fifo_get(fifo, timeout) \
-	k_queue_get(&(fifo)->_queue, timeout)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_fifo, get, fifo, timeout); \
+	void *ret = k_queue_get(&(fifo)->_queue, timeout); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_fifo, get, fifo, timeout, ret); \
+	ret; \
+	})
 
 /**
  * @brief Query a FIFO queue to see if it has data available.
@@ -2220,7 +2208,12 @@ struct k_fifo {
  * @return Head element, or NULL if the FIFO queue is empty.
  */
 #define k_fifo_peek_head(fifo) \
-	k_queue_peek_head(&(fifo)->_queue)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_fifo, peek_head, fifo); \
+	void *ret = k_queue_peek_head(&(fifo)->_queue); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_fifo, peek_head, fifo, ret); \
+	ret; \
+	})
 
 /**
  * @brief Peek element at the tail of FIFO queue.
@@ -2234,7 +2227,12 @@ struct k_fifo {
  * @return Tail element, or NULL if a FIFO queue is empty.
  */
 #define k_fifo_peek_tail(fifo) \
-	k_queue_peek_tail(&(fifo)->_queue)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_fifo, peek_tail, fifo); \
+	void *ret = k_queue_peek_tail(&(fifo)->_queue); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_fifo, peek_tail, fifo, ret); \
+	ret; \
+	})
 
 /**
  * @brief Statically define and initialize a FIFO queue.
@@ -2284,7 +2282,11 @@ struct k_lifo {
  * @return N/A
  */
 #define k_lifo_init(lifo) \
-	k_queue_init(&(lifo)->_queue)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_lifo, init, lifo); \
+	k_queue_init(&(lifo)->_queue); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_lifo, init, lifo); \
+	})
 
 /**
  * @brief Add an element to a LIFO queue.
@@ -2301,7 +2303,11 @@ struct k_lifo {
  * @return N/A
  */
 #define k_lifo_put(lifo, data) \
-	k_queue_prepend(&(lifo)->_queue, data)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_lifo, put, lifo, data); \
+	k_queue_prepend(&(lifo)->_queue, data); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_lifo, put, lifo, data); \
+	})
 
 /**
  * @brief Add an element to a LIFO queue.
@@ -2320,7 +2326,12 @@ struct k_lifo {
  * @retval -ENOMEM if there isn't sufficient RAM in the caller's resource pool
  */
 #define k_lifo_alloc_put(lifo, data) \
-	k_queue_alloc_prepend(&(lifo)->_queue, data)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_lifo, alloc_put, lifo, data); \
+	int ret = k_queue_alloc_prepend(&(lifo)->_queue, data); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_lifo, alloc_put, lifo, data, ret); \
+	ret; \
+	})
 
 /**
  * @brief Get an element from a LIFO queue.
@@ -2340,7 +2351,12 @@ struct k_lifo {
  * without waiting, or waiting period timed out.
  */
 #define k_lifo_get(lifo, timeout) \
-	k_queue_get(&(lifo)->_queue, timeout)
+	({ \
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_lifo, get, lifo, timeout); \
+	void *ret = k_queue_get(&(lifo)->_queue, timeout); \
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_lifo, get, lifo, timeout, ret); \
+	ret; \
+	})
 
 /**
  * @brief Statically define and initialize a LIFO queue.
@@ -2369,8 +2385,6 @@ struct k_stack {
 	struct k_spinlock lock;
 	stack_data_t *base, *next, *top;
 
-	_OBJECT_TRACING_NEXT_PTR(k_stack)
-	_OBJECT_TRACING_LINKED_FLAG
 	uint8_t flags;
 };
 
@@ -2380,7 +2394,6 @@ struct k_stack {
 	.base = stack_buffer, \
 	.next = stack_buffer, \
 	.top = stack_buffer + stack_num_entries, \
-	_OBJECT_TRACING_INIT \
 	}
 
 /**
@@ -2530,9 +2543,6 @@ struct k_mutex {
 
 	/** Original thread priority */
 	int owner_orig_prio;
-
-	_OBJECT_TRACING_NEXT_PTR(k_mutex)
-	_OBJECT_TRACING_LINKED_FLAG
 };
 
 /**
@@ -2544,7 +2554,6 @@ struct k_mutex {
 	.owner = NULL, \
 	.lock_count = 0, \
 	.owner_orig_prio = K_LOWEST_THREAD_PRIO, \
-	_OBJECT_TRACING_INIT \
 	}
 
 /**
@@ -2717,8 +2726,6 @@ struct k_sem {
 
 	_POLL_EVENT;
 
-	_OBJECT_TRACING_NEXT_PTR(k_sem)
-	_OBJECT_TRACING_LINKED_FLAG
 };
 
 #define Z_SEM_INITIALIZER(obj, initial_count, count_limit) \
@@ -2727,7 +2734,6 @@ struct k_sem {
 	.count = initial_count, \
 	.limit = count_limit, \
 	_POLL_EVENT_OBJ_INIT(obj) \
-	_OBJECT_TRACING_INIT \
 	}
 
 /**
@@ -2956,10 +2962,7 @@ int k_work_submit_to_queue(struct k_work_q *queue,
  *
  * @return as with k_work_submit_to_queue().
  */
-static inline int k_work_submit(struct k_work *work)
-{
-	return k_work_submit_to_queue(&k_sys_work_q, work);
-}
+extern int k_work_submit(struct k_work *work);
 
 /** @brief Wait for last-submitted instance to complete.
  *
@@ -3243,11 +3246,8 @@ int k_work_schedule_for_queue(struct k_work_q *queue,
  *
  * @return as with k_work_schedule_for_queue().
  */
-static inline int k_work_schedule(struct k_work_delayable *dwork,
-				   k_timeout_t delay)
-{
-	return k_work_schedule_for_queue(&k_sys_work_q, dwork, delay);
-}
+extern int k_work_schedule(struct k_work_delayable *dwork,
+				   k_timeout_t delay);
 
 /** @brief Reschedule a work item to a queue after a delay.
  *
@@ -3294,11 +3294,8 @@ int k_work_reschedule_for_queue(struct k_work_q *queue,
  *
  * @return as with k_work_reschedule_for_queue().
  */
-static inline int k_work_reschedule(struct k_work_delayable *dwork,
-				     k_timeout_t delay)
-{
-	return k_work_reschedule_for_queue(&k_sys_work_q, dwork, delay);
-}
+extern int k_work_reschedule(struct k_work_delayable *dwork,
+				     k_timeout_t delay);
 
 /** @brief Flush delayable work.
  *
@@ -3658,13 +3655,13 @@ static inline k_tid_t k_work_queue_thread_get(struct k_work_q *queue)
 
 /* Legacy wrappers */
 
-/* to be deprecated */
+__deprecated
 static inline bool k_work_pending(const struct k_work *work)
 {
 	return k_work_is_pending(work);
 }
 
-/* to be deprecated */
+__deprecated
 static inline void k_work_q_start(struct k_work_q *work_q,
 				  k_thread_stack_t *stack,
 				  size_t stack_size, int prio)
@@ -3672,24 +3669,23 @@ static inline void k_work_q_start(struct k_work_q *work_q,
 	k_work_queue_start(work_q, stack, stack_size, prio, NULL);
 }
 
-/* to be deprecated */
+/* deprecated, remove when corresponding deprecated API is removed. */
 struct k_delayed_work {
 	struct k_work_delayable work;
 };
 
-/* to be deprecated */
-#define Z_DELAYED_WORK_INITIALIZER(work_handler) { \
+#define Z_DELAYED_WORK_INITIALIZER(work_handler) __DEPRECATED_MACRO { \
 	.work = Z_WORK_DELAYABLE_INITIALIZER(work_handler), \
 }
 
-/* to be deprecated */
+__deprecated
 static inline void k_delayed_work_init(struct k_delayed_work *work,
 				       k_work_handler_t handler)
 {
 	k_work_init_delayable(&work->work, handler);
 }
 
-/* to be deprecated */
+__deprecated
 static inline int k_delayed_work_submit_to_queue(struct k_work_q *work_q,
 						 struct k_delayed_work *work,
 						 k_timeout_t delay)
@@ -3700,7 +3696,7 @@ static inline int k_delayed_work_submit_to_queue(struct k_work_q *work_q,
 	return (rc >= 0) ? 0 : rc;
 }
 
-/* to be deprecated */
+__deprecated
 static inline int k_delayed_work_submit(struct k_delayed_work *work,
 					k_timeout_t delay)
 {
@@ -3710,7 +3706,7 @@ static inline int k_delayed_work_submit(struct k_delayed_work *work,
 	return (rc >= 0) ? 0 : rc;
 }
 
-/* to be deprecated */
+__deprecated
 static inline int k_delayed_work_cancel(struct k_delayed_work *work)
 {
 	bool pending = k_work_delayable_is_pending(&work->work);
@@ -3751,13 +3747,13 @@ static inline int k_delayed_work_cancel(struct k_delayed_work *work)
 	return -EALREADY;
 }
 
-/* to be deprecated */
+__deprecated
 static inline bool k_delayed_work_pending(struct k_delayed_work *work)
 {
 	return k_work_delayable_is_pending(&work->work);
 }
 
-/* to be deprecated */
+__deprecated
 static inline int32_t k_delayed_work_remaining_get(struct k_delayed_work *work)
 {
 	k_ticks_t rem = k_work_delayable_remaining_get(&work->work);
@@ -3766,14 +3762,14 @@ static inline int32_t k_delayed_work_remaining_get(struct k_delayed_work *work)
 	return k_ticks_to_ms_floor32(rem);
 }
 
-/* to be deprecated, not used in-tree */
+__deprecated
 static inline k_ticks_t k_delayed_work_expires_ticks(
 	struct k_delayed_work *work)
 {
 	return k_work_delayable_expires_get(&work->work);
 }
 
-/* to be deprecated, not used in-tree */
+__deprecated
 static inline k_ticks_t k_delayed_work_remaining_ticks(
 	struct k_delayed_work *work)
 {
@@ -3998,7 +3994,7 @@ struct k_work_poll {
  * @param work Symbol name for delayed work item object
  * @param work_handler Function to invoke each time work item is processed.
  */
-#define K_DELAYED_WORK_DEFINE(work, work_handler) \
+#define K_DELAYED_WORK_DEFINE(work, work_handler) __DEPRECATED_MACRO \
 	struct k_delayed_work work = Z_DELAYED_WORK_INITIALIZER(work_handler)
 
 /**
@@ -4086,14 +4082,10 @@ extern int k_work_poll_submit_to_queue(struct k_work_q *work_q,
  * @retval -EINVAL Work item is being processed or has completed its work.
  * @retval -EADDRINUSE Work item is pending on a different workqueue.
  */
-static inline int k_work_poll_submit(struct k_work_poll *work,
+extern int k_work_poll_submit(struct k_work_poll *work,
 				     struct k_poll_event *events,
 				     int num_events,
-				     k_timeout_t timeout)
-{
-	return k_work_poll_submit_to_queue(&k_sys_work_q, work,
-					   events, num_events, timeout);
-}
+				     k_timeout_t timeout);
 
 /**
  * @brief Cancel a triggered work item.
@@ -4144,9 +4136,6 @@ struct k_msgq {
 
 	_POLL_EVENT;
 
-	_OBJECT_TRACING_NEXT_PTR(k_msgq)
-	_OBJECT_TRACING_LINKED_FLAG
-
 	/** Message queue */
 	uint8_t flags;
 };
@@ -4166,7 +4155,6 @@ struct k_msgq {
 	.write_ptr = q_buffer, \
 	.used_msgs = 0, \
 	_POLL_EVENT_OBJ_INIT(obj) \
-	_OBJECT_TRACING_INIT \
 	}
 
 /**
@@ -4439,8 +4427,6 @@ struct k_mbox {
 	_wait_q_t rx_msg_queue;
 	struct k_spinlock lock;
 
-	_OBJECT_TRACING_NEXT_PTR(k_mbox)
-	_OBJECT_TRACING_LINKED_FLAG
 };
 /**
  * @cond INTERNAL_HIDDEN
@@ -4450,7 +4436,6 @@ struct k_mbox {
 	{ \
 	.tx_msg_queue = Z_WAIT_Q_INIT(&obj.tx_msg_queue), \
 	.rx_msg_queue = Z_WAIT_Q_INIT(&obj.rx_msg_queue), \
-	_OBJECT_TRACING_INIT \
 	}
 
 /**
@@ -4580,8 +4565,6 @@ struct k_pipe {
 		_wait_q_t      writers; /**< Writer wait queue */
 	} wait_q;			/** Wait queue */
 
-	_OBJECT_TRACING_NEXT_PTR(k_pipe)
-	_OBJECT_TRACING_LINKED_FLAG
 	uint8_t	       flags;		/**< Flags */
 };
 
@@ -4602,7 +4585,6 @@ struct k_pipe {
 		.readers = Z_WAIT_Q_INIT(&obj.wait_q.readers),       \
 		.writers = Z_WAIT_Q_INIT(&obj.wait_q.writers)        \
 	},                                                          \
-	_OBJECT_TRACING_INIT                                        \
 	.flags = 0                                                  \
 	}
 
@@ -4757,8 +4739,6 @@ struct k_mem_slab {
 	uint32_t max_used;
 #endif
 
-	_OBJECT_TRACING_NEXT_PTR(k_mem_slab)
-	_OBJECT_TRACING_LINKED_FLAG
 };
 
 #define Z_MEM_SLAB_INITIALIZER(obj, slab_buffer, slab_block_size, \
@@ -4771,7 +4751,6 @@ struct k_mem_slab {
 	.buffer = slab_buffer, \
 	.free_list = NULL, \
 	.num_used = 0, \
-	_OBJECT_TRACING_INIT \
 	}
 
 
@@ -4995,11 +4974,8 @@ void *k_heap_aligned_alloc(struct k_heap *h, size_t align, size_t bytes,
  * @param timeout How long to wait, or K_NO_WAIT
  * @return A pointer to valid heap memory, or NULL
  */
-static inline void *k_heap_alloc(struct k_heap *h, size_t bytes,
-				 k_timeout_t timeout)
-{
-	return k_heap_aligned_alloc(h, sizeof(void *), bytes, timeout);
-}
+void *k_heap_alloc(struct k_heap *h, size_t bytes,
+				 k_timeout_t timeout);
 
 /**
  * @brief Free memory allocated by k_heap_alloc()
@@ -5072,10 +5048,7 @@ extern void *k_aligned_alloc(size_t align, size_t size);
  *
  * @return Address of the allocated memory if successful; otherwise NULL.
  */
-static inline void *k_malloc(size_t size)
-{
-	return k_aligned_alloc(sizeof(void *), size);
-}
+extern void *k_malloc(size_t size);
 
 /**
  * @brief Free memory allocated from heap.
@@ -5373,11 +5346,6 @@ __syscall void k_poll_signal_init(struct k_poll_signal *sig);
  * @param sig A poll signal object
  */
 __syscall void k_poll_signal_reset(struct k_poll_signal *sig);
-
-static inline void z_impl_k_poll_signal_reset(struct k_poll_signal *sig)
-{
-	sig->signaled = 0U;
-}
 
 /**
  * @brief Fetch the signaled state and result value of a poll signal

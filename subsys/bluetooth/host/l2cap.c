@@ -32,11 +32,7 @@
 #define L2CAP_LE_MIN_MTU		23
 #define L2CAP_ECRED_MIN_MTU		64
 
-#if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
-#define L2CAP_LE_MAX_CREDITS		(CONFIG_BT_ACL_RX_COUNT - 1)
-#else
-#define L2CAP_LE_MAX_CREDITS		(CONFIG_BT_RX_BUF_COUNT - 1)
-#endif
+#define L2CAP_LE_MAX_CREDITS		(CONFIG_BT_BUF_ACL_RX_COUNT - 1)
 
 #define L2CAP_LE_CID_DYN_START	0x0040
 #define L2CAP_LE_CID_DYN_END	0x007f
@@ -63,10 +59,6 @@ NET_BUF_POOL_FIXED_DEFINE(disc_pool, 1,
 				sizeof(struct bt_l2cap_sig_hdr) +
 				sizeof(struct bt_l2cap_disconn_req)),
 			  NULL);
-
-#define L2CAP_MAX_LE_MPS	CONFIG_BT_L2CAP_RX_MTU
-/* For now use MPS - SDU length to disable segmentation */
-#define L2CAP_MAX_LE_MTU	(L2CAP_MAX_LE_MPS - 2)
 
 #define L2CAP_ECRED_CHAN_MAX	5
 
@@ -330,7 +322,13 @@ static bool l2cap_chan_add(struct bt_conn *conn, struct bt_l2cap_chan *chan,
 		return false;
 	}
 
-	k_delayed_work_init(&chan->rtx_work, l2cap_rtx_timeout);
+	/* All dynamic channels have the destroy handler which makes sure that
+	 * the RTX work structure is properly released with a cancel sync.
+	 * The fixed signal channel is only removed when disconnected and the
+	 * disconnected handler is always called from the workqueue itself so
+	 * canceling from there should always succeed.
+	 */
+	k_work_init_delayable(&chan->rtx_work, l2cap_rtx_timeout);
 	atomic_clear(chan->status);
 
 	bt_l2cap_chan_add(conn, chan, destroy);
@@ -457,7 +455,7 @@ static void l2cap_chan_send_req(struct bt_l2cap_chan *chan,
 	 * final expiration, when the response is received, or the physical
 	 * link is lost.
 	 */
-	k_delayed_work_submit(&chan->rtx_work, timeout);
+	k_work_reschedule(&chan->rtx_work, timeout);
 }
 
 static int l2cap_le_conn_req(struct bt_l2cap_le_chan *ch)
@@ -798,20 +796,25 @@ static void l2cap_chan_rx_init(struct bt_l2cap_le_chan *chan)
 
 	/* Use existing MTU if defined */
 	if (!chan->rx.mtu) {
-		chan->rx.mtu = L2CAP_MAX_LE_MTU;
+		/* If application has not provide the incoming L2CAP SDU MTU use
+		 * an MTU that does not require segmentation.
+		 */
+		chan->rx.mtu = BT_L2CAP_SDU_RX_MTU;
 	}
 
-	/* MPS shall not be bigger than MTU + 2 as the remaining bytes cannot
-	 * be used.
+	/* MPS shall not be bigger than MTU + BT_L2CAP_SDU_HDR_SIZE as the
+	 * remaining bytes cannot be used.
 	 */
-	chan->rx.mps = MIN(chan->rx.mtu + 2, L2CAP_MAX_LE_MPS);
+	chan->rx.mps = MIN(chan->rx.mtu + BT_L2CAP_SDU_HDR_SIZE,
+			   BT_L2CAP_RX_MTU);
 
 	/* Truncate MTU if channel have disabled segmentation but still have
 	 * set an MTU which requires it.
 	 */
-	if (!chan->chan.ops->alloc_buf && (chan->rx.mps < chan->rx.mtu + 2)) {
+	if (!chan->chan.ops->alloc_buf &&
+	    (chan->rx.mps < chan->rx.mtu + BT_L2CAP_SDU_HDR_SIZE)) {
 		BT_WARN("Segmentation disabled but MTU > MPS, truncating MTU");
-		chan->rx.mtu = chan->rx.mps - 2;
+		chan->rx.mtu = chan->rx.mps - BT_L2CAP_SDU_HDR_SIZE;
 	}
 
 	/* Use existing credits if defined */
@@ -820,7 +823,7 @@ static void l2cap_chan_rx_init(struct bt_l2cap_le_chan *chan)
 			/* Auto tune credits to receive a full packet */
 			chan->rx.init_credits =
 				ceiling_fraction(chan->rx.mtu,
-						 L2CAP_MAX_LE_MPS);
+						 BT_L2CAP_RX_MTU);
 		} else {
 			chan->rx.init_credits = L2CAP_LE_MAX_CREDITS;
 		}
@@ -829,7 +832,8 @@ static void l2cap_chan_rx_init(struct bt_l2cap_le_chan *chan)
 	atomic_set(&chan->rx.credits,  0);
 
 	if (BT_DBG_ENABLED &&
-	    chan->rx.init_credits * chan->rx.mps < chan->rx.mtu + 2) {
+	    chan->rx.init_credits * chan->rx.mps <
+	    chan->rx.mtu + BT_L2CAP_SDU_HDR_SIZE) {
 		BT_WARN("Not enough credits for a full packet");
 	}
 }
@@ -912,8 +916,11 @@ static void l2cap_chan_destroy(struct bt_l2cap_chan *chan)
 
 	BT_DBG("chan %p cid 0x%04x", ch, ch->rx.cid);
 
-	/* Cancel ongoing work */
-	k_delayed_work_cancel(&chan->rtx_work);
+	/* Cancel ongoing work. Since the channel can be re-used after this
+	 * we need to sync to make sure that the kernel does not have it
+	 * in its queue anymore.
+	 */
+	k_work_cancel_delayable_sync(&chan->rtx_work, &chan->rtx_sync);
 
 	if (ch->tx_buf) {
 		net_buf_unref(ch->tx_buf);
@@ -1421,7 +1428,7 @@ static void le_ecred_conn_rsp(struct bt_l2cap *l2cap, uint8_t ident,
 	case BT_L2CAP_LE_ERR_ENCRYPTION:
 		while ((chan = l2cap_lookup_ident(conn, ident))) {
 			/* Cancel RTX work */
-			k_delayed_work_cancel(&chan->chan.rtx_work);
+			k_work_cancel_delayable(&chan->chan.rtx_work);
 
 			/* If security needs changing wait it to be completed */
 			if (!l2cap_change_security(chan, result)) {
@@ -1442,7 +1449,7 @@ static void le_ecred_conn_rsp(struct bt_l2cap *l2cap, uint8_t ident,
 			struct bt_l2cap_chan *c;
 
 			/* Cancel RTX work */
-			k_delayed_work_cancel(&chan->chan.rtx_work);
+			k_work_cancel_delayable(&chan->chan.rtx_work);
 
 			dcid = net_buf_pull_le16(buf);
 
@@ -1539,7 +1546,7 @@ static void le_conn_rsp(struct bt_l2cap *l2cap, uint8_t ident,
 	}
 
 	/* Cancel RTX work */
-	k_delayed_work_cancel(&chan->chan.rtx_work);
+	k_work_cancel_delayable(&chan->chan.rtx_work);
 
 	/* Reset ident since it got a response */
 	chan->chan.ident = 0U;
@@ -1811,7 +1818,7 @@ static int l2cap_chan_le_send_sdu(struct bt_l2cap_le_chan *ch,
 
 	if (!sent) {
 		/* Add SDU length for the first segment */
-		ret = l2cap_chan_le_send(ch, frag, BT_L2CAP_SDU_HDR_LEN);
+		ret = l2cap_chan_le_send(ch, frag, BT_L2CAP_SDU_HDR_SIZE);
 		if (ret < 0) {
 			if (ret == -EAGAIN) {
 				/* Store sent data into user_data */
@@ -2367,6 +2374,12 @@ static void l2cap_disconnected(struct bt_l2cap_chan *chan)
 {
 	BT_DBG("ch %p cid 0x%04x", BT_L2CAP_LE_CHAN(chan),
 	       BT_L2CAP_LE_CHAN(chan)->rx.cid);
+
+	/* Cancel RTX work on signal channel.
+	 * Disconnected callback is always called from system worqueue
+	 * so this should always succeed.
+	 */
+	(void)k_work_cancel_delayable(&chan->rtx_work);
 }
 
 static int l2cap_accept(struct bt_conn *conn, struct bt_l2cap_chan **chan)

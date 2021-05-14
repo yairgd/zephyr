@@ -5,7 +5,7 @@
  */
 
 #include <kernel.h>
-#include <debug/object_tracing_common.h>
+
 #include <init.h>
 #include <ksched.h>
 #include <wait_q.h>
@@ -14,27 +14,6 @@
 #include <spinlock.h>
 
 static struct k_spinlock lock;
-
-#ifdef CONFIG_OBJECT_TRACING
-
-struct k_timer *_trace_list_k_timer;
-
-/*
- * Complete initialization of statically defined timers.
- */
-static int init_timer_module(const struct device *dev)
-{
-	ARG_UNUSED(dev);
-
-	Z_STRUCT_SECTION_FOREACH(k_timer, timer) {
-		SYS_TRACING_OBJ_INIT(k_timer, timer);
-	}
-	return 0;
-}
-
-SYS_INIT(init_timer_module, PRE_KERNEL_1, CONFIG_KERNEL_INIT_PRIORITY_OBJECTS);
-
-#endif /* CONFIG_OBJECT_TRACING */
 
 /**
  * @brief Handle expiration of a kernel timer object.
@@ -105,7 +84,8 @@ void k_timer_init(struct k_timer *timer,
 	}
 
 	z_init_timeout(&timer->timeout);
-	SYS_TRACING_OBJ_INIT(k_timer, timer);
+
+	SYS_PORT_TRACING_OBJ_INIT(k_timer, timer);
 
 	timer->user_data = NULL;
 
@@ -116,6 +96,8 @@ void k_timer_init(struct k_timer *timer,
 void z_impl_k_timer_start(struct k_timer *timer, k_timeout_t duration,
 			  k_timeout_t period)
 {
+	SYS_PORT_TRACING_OBJ_FUNC(k_timer, start, timer);
+
 	if (K_TIMEOUT_EQ(duration, K_FOREVER)) {
 		return;
 	}
@@ -162,6 +144,8 @@ static inline void z_vrfy_k_timer_start(struct k_timer *timer,
 
 void z_impl_k_timer_stop(struct k_timer *timer)
 {
+	SYS_PORT_TRACING_OBJ_FUNC(k_timer, stop, timer);
+
 	int inactive = z_abort_timeout(&timer->timeout) != 0;
 
 	if (inactive) {
@@ -214,6 +198,7 @@ static inline uint32_t z_vrfy_k_timer_status_get(struct k_timer *timer)
 uint32_t z_impl_k_timer_status_sync(struct k_timer *timer)
 {
 	__ASSERT(!arch_is_in_isr(), "");
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_timer, status_sync, timer);
 
 	if (!IS_ENABLED(CONFIG_MULTITHREADING)) {
 		uint32_t result;
@@ -243,6 +228,8 @@ uint32_t z_impl_k_timer_status_sync(struct k_timer *timer)
 
 	if (result == 0U) {
 		if (!z_is_inactive_timeout(&timer->timeout)) {
+			SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_timer, status_sync, timer, K_FOREVER);
+
 			/* wait for timer to expire or stop */
 			(void)z_pend_curr(&lock, key, &timer->wait_q, K_FOREVER);
 
@@ -258,6 +245,11 @@ uint32_t z_impl_k_timer_status_sync(struct k_timer *timer)
 
 	timer->status = 0U;
 	k_spin_unlock(&lock, key);
+
+	/**
+	 * @note	New tracing hook
+	 */
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_timer, status_sync, timer, result);
 
 	return result;
 }
