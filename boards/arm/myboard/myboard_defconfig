@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: Apache-2.0
+
+CONFIG_SOC_SERIES_STM32L4X=y
+CONFIG_SOC_STM32L4R5XX=y
+
+# 120MHz system clock only in 'boost power' mode. DM00310109, section
+# 5.1.7 states that the R1MODE bit must be cleared before system can
+# be 120MHz. This requires an update to the stm32 clock control
+# driver, so default to 80MHz until then.
+CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC=120000000
+
+# 80MHz system clock in 'normal power' mode
+#CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC=80000000
+
+# enable uart driver
+CONFIG_SERIAL=y
+
+# enable pinmux
+CONFIG_PINMUX=y
+
+# Enable GPIO
+CONFIG_GPIO=y
+
+# Clock Configuration
+CONFIG_CLOCK_CONTROL=y
+
+# Use PLLCLK for SYSCLK
+CONFIG_CLOCK_STM32_SYSCLK_SRC_PLL=y
+CONFIG_CLOCK_STM32_HSE_CLOCK=16000000
+
+# Use HSI (16MHz) to feed into PLL
+CONFIG_CLOCK_STM32_PLL_SRC_HSE=y
+
+CONFIG_CLOCK_STM32_PLL_M_DIVISOR=4
+CONFIG_CLOCK_STM32_PLL_P_DIVISOR=2
+CONFIG_CLOCK_STM32_PLL_Q_DIVISOR=2
+CONFIG_CLOCK_STM32_PLL_R_DIVISOR=2
+
+# Produce 80MHz clock at PLLCLK output
+CONFIG_CLOCK_STM32_PLL_N_MULTIPLIER=60
+
+#CONFIG_USE_STM32_HAL_CORTEX=y
+# Comment out above and uncomment below for 120MHz. Note that you
+# must have configured the mcu for boost power mode.
+# CONFIG_CLOCK_STM32_PLL_N_MULTIPLIER=60
+
+# Produce Max (80MHz or 120MHz) HCLK
+CONFIG_CLOCK_STM32_AHB_PRESCALER=1
+
+# Produce Max (80MHz or 120MHz) APB1 clocks and APB2 clocks
+CONFIG_CLOCK_STM32_APB1_PRESCALER=1
+CONFIG_CLOCK_STM32_APB2_PRESCALER=1
+
+# Console
+CONFIG_CONSOLE=y
+CONFIG_UART_CONSOLE=y
+
+# Enable MPU
+CONFIG_ARM_MPU=y
+
+# Enable HW stack protection
+CONFIG_HW_STACK_PROTECTION=y
+
+#CONFIG_SIZE_OPTIMIZATIONS=y
+#CONFIG_NO_OPTIMIZATIONS=y
+
+CONFIG_SPEED_OPTIMIZATIONS=y
+
+CONFIG_ENTROPY_GENERATOR=y
+CONFIG_TEST_RANDOM_GENERATOR=y
+
+#CONFIG_FLASH_LOAD_OFFSET=0x20000
+
+CONFIG_USB_DFU_DEFAULT_POLLTIMEOUT=1000
+
